@@ -9,8 +9,8 @@
     {
       "name": "toucan",
       "source": "./",
-      "description": "Independent verification of a preregistered slice by executing your project's oracle.",
-      "version": "0.1.0"
+      "description": "Register a verifiable slice, then gate it with an independent critic that executes your project's oracle.",
+      "version": "0.2.0"
     }
   ]
 }
