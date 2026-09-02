@@ -1,0 +1,11 @@
+{
+  "name": "toucan",
+  "description": "A bounded builder-verifier loop with an executable oracle. Ships an independent verification agent that runs your project's test suite, build, type checker, linter, or benchmark and returns a binary verdict against a preregistered criterion.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Aurelien Duarte"
+  },
+  "homepage": "https://github.com/fluxscale/toucan",
+  "repository": "https://github.com/fluxscale/toucan",
+  "license": "MIT"
+}

@@ -1,0 +1,16 @@
+{
+  "name": "fluxscale",
+  "description": "Verification tooling from fluxscale: bounded builder-verifier loops gated on executable evidence.",
+  "owner": {
+    "name": "Aurelien Duarte",
+    "url": "https://github.com/fluxscale"
+  },
+  "plugins": [
+    {
+      "name": "toucan",
+      "source": "./",
+      "description": "Independent verification of a preregistered slice by executing your project's oracle.",
+      "version": "0.1.0"
+    }
+  ]
+}
