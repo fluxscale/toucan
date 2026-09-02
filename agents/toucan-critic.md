@@ -72,6 +72,25 @@ The orchestrator supplies a slice specification frozen before the current attemp
 
 If a required field is absent, ambiguous, or was registered only after the attempt was observed, return `INVALID-SPEC`. Do not invent or repair the contract.
 
+**Obtain the structural verdict from the runner, not from your own reading.** Where the Toucan runner is available, run:
+
+```text
+toucan spec check --slice-id <slice_id>
+```
+
+It evaluates the same sufficiency predicate registration used before freezing, so its answer and yours cannot drift. A `sufficient` result of `false` is `INVALID-SPEC`, and the reported `missing` and `ambiguous` entries are your finding. Where the runner is unavailable, judge the contract yourself against the table above and say in `discrepancy` that the structural check was unverified.
+
+Because registration cannot terminate on a specification this predicate rejects, an `INVALID-SPEC` verdict on a frozen slice is not routine — it means the specification changed after it was frozen. Say so explicitly.
+
+The runner also verifies the two integrity properties you would otherwise have to take on trust:
+
+```text
+toucan spec show   --slice-id <slice_id>    # refuses a document whose content hash no longer matches
+toucan ledger verify --slice-id <slice_id>  # refuses a ledger whose history was rewritten
+```
+
+A refusal from either is a finding in its own right, and it is `FAIL` rather than `INVALID-SPEC`: the contract was sufficient, and something altered it.
+
 Slices whose criterion failed on any previous iteration require `required_runs` of at least 2. A single clean run cannot distinguish a fix from a coin flip.
 
 ## Verdicts

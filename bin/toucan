@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Toucan command line entry point.
+
+Resolves the bundled library relative to this file so the executable works
+wherever the plugin is installed, with no packaging or install step.
+"""
+
+import os
+import sys
+
+_PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(_PLUGIN_ROOT, "lib"))
+
+from toucan.cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())
