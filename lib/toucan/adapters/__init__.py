@@ -27,9 +27,18 @@ def get(name):
 
 
 def detect_all(repo_root):
-    """Every candidate oracle any adapter recognises, best evidence first."""
+    """Every candidate oracle any adapter recognises, best evidence first.
+
+    A candidate that cannot be started sorts last regardless of how strong its
+    evidence was. Recognising a runner is not the same as being able to run it,
+    and only the second one makes an oracle.
+    """
     candidates = []
     for adapter in ADAPTERS.values():
         candidates.extend(adapter.detect(repo_root))
-    candidates.sort(key=lambda c: -c["confidence"])
+    candidates.sort(key=lambda c: (not c.get("runnable", True), -c["confidence"]))
     return candidates
+
+
+def runnable(candidates):
+    return [c for c in candidates if c.get("runnable", True)]

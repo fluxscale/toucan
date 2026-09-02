@@ -75,12 +75,19 @@ branch name. Facts about the tree outrank anything said in conversation.
 
 ### 2. Detect the oracle
 
-Run `toucan detect`.
+Run `toucan detect`. Read `runnable_candidates`, not `candidates` — a candidate carries
+`runnable`, and one that cannot be started is not an oracle no matter how strong its evidence.
 
-- **One candidate** → use it, provenance `detected`, evidence as reported.
+- **One runnable candidate** → use it, provenance `detected`, evidence as reported.
 - **More than one** → present them and ask. Do not pick.
-- **None** → say plainly that no runner was recognised and ask for the invocation as separate
-  arguments. Do not guess a command.
+- **None recognised** → say plainly that no runner was recognised and ask for the invocation as
+  separate arguments. Do not guess a command.
+- **Recognised but none runnable** → report the runner it found *and the exact reason it cannot
+  start*, from `runnable_detail`. This is usually a runner that is not installed. Ask for an
+  invocation that runs in the tree as it stands. Do not install anything.
+
+If the response carries a `caution`, the evidence was weak — a test directory shows tests exist,
+not which runner runs them. Present the invocation as something to confirm, not as established.
 
 The invocation must be an argument array. If the human gives you a shell string with a pipe or a
 redirect, ask them to express it as separate arguments; the runner will refuse it otherwise, and

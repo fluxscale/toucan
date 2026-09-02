@@ -54,22 +54,45 @@ def cmd_doctor(args):
 def cmd_detect(args):
     root = repo_root(args)
     candidates = adapters.detect_all(root)
+    usable = adapters.runnable(candidates)
+    preferred = usable[0] if usable else (candidates[0] if candidates else None)
+
     payload = {
         "candidates": candidates,
-        "ambiguous": len(candidates) > 1,
+        "runnable_candidates": usable,
+        "ambiguous": len(usable) > 1,
         "protected_paths": (
-            adapters.get(candidates[0]["adapter"]).protected_paths(root)
-            if candidates
+            adapters.get(preferred["adapter"]).protected_paths(root)
+            if preferred
             else []
         ),
     }
+
     if not candidates:
         payload["refusal"] = (
             "no recognised runner configuration was found. Toucan does not "
             "guess an oracle; supply the invocation as an argument array."
         )
+    elif not usable:
+        blocked = "; ".join(
+            "%s (%s): %s"
+            % (c["adapter"], " ".join(c["argv"]), c.get("runnable_detail", "unknown"))
+            for c in candidates
+        )
+        payload["refusal"] = (
+            "a runner was recognised but none of the detected invocations can "
+            "be started, so none of them is an oracle: %s. Supply an "
+            "invocation that runs in this tree as it stands." % blocked
+        )
+    elif any(c.get("evidence_strength") == "weak" for c in usable):
+        payload["caution"] = (
+            "the strongest evidence is weak: a test directory shows tests "
+            "exist, not which runner runs them. Confirm the invocation rather "
+            "than presenting it as established."
+        )
+
     emit(payload)
-    return 0
+    return 0 if usable or not candidates else 2
 
 
 def cmd_signals(args):

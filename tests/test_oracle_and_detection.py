@@ -101,3 +101,87 @@ class AmbiguousDetectionTest(RepoCase):
         for candidate in adapters.detect_all(self.repo):
             with self.subTest(adapter=candidate["adapter"]):
                 self.assertTrue(candidate["evidence"])
+
+
+class RunnabilityTest(RepoCase):
+    """Recognising a runner is not the same as being able to run it."""
+
+    def test_probe_reports_a_missing_command(self):
+        from toucan.adapters import pytest_adapter
+
+        runnable, detail = pytest_adapter.probe(["definitely-not-real-xyz"])
+        self.assertFalse(runnable)
+        self.assertIn("PATH", detail)
+
+    def test_probe_reports_a_command_that_exits_non_zero(self):
+        import sys as _sys
+        from toucan.adapters import pytest_adapter
+
+        runnable, _ = pytest_adapter.probe([_sys.executable, "-m", "nonexistent_mod"])
+        self.assertFalse(runnable)
+
+    def test_unrunnable_candidate_is_marked_and_floored(self):
+        from toucan.adapters import pytest_adapter
+
+        original = pytest_adapter._base_argv
+        pytest_adapter._base_argv = lambda: ["definitely-not-real-xyz", "-q"]
+        try:
+            candidate = pytest_adapter.detect(self.repo)[0]
+        finally:
+            pytest_adapter._base_argv = original
+        self.assertFalse(candidate["runnable"])
+        self.assertLessEqual(candidate["confidence"], 5)
+        self.assertIn("PATH", candidate["runnable_detail"])
+
+    def test_unrunnable_candidates_sort_last(self):
+        candidates = [
+            {"adapter": "a", "confidence": 95, "runnable": False},
+            {"adapter": "b", "confidence": 20, "runnable": True},
+        ]
+        ordered = sorted(
+            candidates, key=lambda c: (not c.get("runnable", True), -c["confidence"])
+        )
+        self.assertEqual(ordered[0]["adapter"], "b")
+
+    def test_verify_can_be_skipped(self):
+        from toucan.adapters import pytest_adapter
+
+        candidate = pytest_adapter.detect(self.repo, verify=False)[0]
+        self.assertTrue(candidate["runnable"])
+        self.assertEqual(candidate["runnable_detail"], "not verified")
+
+
+class EvidenceStrengthTest(RepoCase):
+    """A test directory is weak evidence; a config naming pytest is strong."""
+
+    def test_pytest_ini_is_strong_evidence(self):
+        candidate = adapters.detect_all(self.repo)[0]
+        self.assertEqual(candidate["evidence_strength"], "strong")
+        self.assertIn("pytest.ini", candidate["evidence"])
+
+    def test_bare_test_directory_is_weak_evidence(self):
+        os.remove(os.path.join(self.repo, "pytest.ini"))
+        candidate = adapters.detect_all(self.repo)[0]
+        self.assertEqual(candidate["evidence_strength"], "weak")
+        self.assertIn("weak", candidate["evidence"])
+
+    def test_config_file_not_naming_pytest_is_not_evidence(self):
+        os.remove(os.path.join(self.repo, "pytest.ini"))
+        with open(os.path.join(self.repo, "tox.ini"), "w") as handle:
+            handle.write("[testenv]\ncommands = nosetests\n")
+        candidate = adapters.detect_all(self.repo)[0]
+        self.assertEqual(candidate["evidence_strength"], "weak")
+
+    def test_config_file_naming_pytest_is_strong_evidence(self):
+        os.remove(os.path.join(self.repo, "pytest.ini"))
+        with open(os.path.join(self.repo, "tox.ini"), "w") as handle:
+            handle.write("[pytest]\naddopts = -q\n")
+        candidate = adapters.detect_all(self.repo)[0]
+        self.assertEqual(candidate["evidence_strength"], "strong")
+
+    def test_pyproject_without_a_pytest_section_is_not_evidence(self):
+        os.remove(os.path.join(self.repo, "pytest.ini"))
+        with open(os.path.join(self.repo, "pyproject.toml"), "w") as handle:
+            handle.write("[project]\nname = 'demo'\n")
+        candidate = adapters.detect_all(self.repo)[0]
+        self.assertEqual(candidate["evidence_strength"], "weak")

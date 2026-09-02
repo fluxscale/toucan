@@ -9,6 +9,7 @@ requires the difference be reported honestly.
 import os
 import re
 import shutil
+import subprocess
 import xml.etree.ElementTree as ElementTree
 
 NAME = "pytest"
@@ -39,22 +40,33 @@ EXECUTION_EVIDENCE = (
     "target reported as skipped or deselected unless skips are permitted."
 )
 
+#: Files whose content names pytest directly. A file merely existing is not
+#: evidence; `tox.ini` in a project that runs nose says nothing about pytest.
 _CONFIG_MARKERS = (
-    ("pytest.ini", 95, "pytest.ini"),
-    ("tox.ini", 60, "tox.ini"),
-    ("setup.cfg", 60, "setup.cfg"),
+    ("pytest.ini", 95, "pytest.ini", None),
+    ("pyproject.toml", 95, "pyproject.toml [tool.pytest.ini_options]",
+     ("[tool.pytest",)),
+    ("setup.cfg", 90, "setup.cfg [tool:pytest]", ("[tool:pytest]",)),
+    ("tox.ini", 90, "tox.ini [pytest]", ("[pytest]", "[tool:pytest]")),
 )
 
+#: A directory of tests says tests exist. It does not say pytest runs them.
+#: Kept as evidence because pytest does collect unittest cases, but weak, and
+#: labelled so that a human confirming the oracle can see it is an assumption.
+_WEAK_DIRECTORY_CONFIDENCE = 35
 
-def _pyproject_declares_pytest(repo_root):
-    path = os.path.join(repo_root, "pyproject.toml")
+
+def _file_contains(path, markers):
     if not os.path.exists(path):
         return False
+    if markers is None:
+        return True
     try:
-        with open(path, "r", encoding="utf-8") as handle:
-            return "[tool.pytest" in handle.read()
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            content = handle.read()
     except OSError:
         return False
+    return any(marker in content for marker in markers)
 
 
 def _base_argv():
@@ -64,41 +76,87 @@ def _base_argv():
     return ["python3", "-m", "pytest", "-q"]
 
 
-def detect(repo_root):
-    """Return candidate oracles with the evidence that produced each."""
-    candidates = []
+def probe(argv, cwd=None):
+    """Establish that this invocation can actually start pytest.
+
+    Detection that proposes an unrunnable oracle wastes a human's attention on
+    ratifying an invocation that was never viable, and only fails at baseline
+    once they have already answered questions about it. Asking the candidate
+    for its version is cheap, read-only, and settles the question up front.
+    """
+    command = [part for part in argv if part != "-q"] + ["--version"]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            shell=False,
+        )
+    except FileNotFoundError:
+        return False, "%s is not on PATH" % argv[0]
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, "could not be started: %s" % exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip().splitlines()
+        return False, detail[0] if detail else "exited %d" % completed.returncode
+    version = (completed.stdout or completed.stderr or "").strip().splitlines()
+    return True, version[0] if version else "available"
+
+
+def detect(repo_root, verify=True):
+    """Return candidate oracles with the evidence that produced each.
+
+    Each candidate carries ``runnable``. A candidate that cannot start is not
+    silently dropped -- the human is told pytest was recognised and why the
+    invocation will not work -- but its confidence is floored so it cannot be
+    presented as the detected oracle.
+    """
     seen_evidence = []
 
-    for filename, confidence, label in _CONFIG_MARKERS:
-        if os.path.exists(os.path.join(repo_root, filename)):
-            seen_evidence.append((confidence, label))
+    for filename, confidence, label, markers in _CONFIG_MARKERS:
+        if _file_contains(os.path.join(repo_root, filename), markers):
+            seen_evidence.append((confidence, label, "strong"))
 
-    if _pyproject_declares_pytest(repo_root):
-        seen_evidence.append((95, "pyproject.toml [tool.pytest.ini_options]"))
+    if os.path.exists(os.path.join(repo_root, "conftest.py")):
+        seen_evidence.append((80, "conftest.py", "strong"))
 
     for directory in ("tests", "test"):
         if os.path.isdir(os.path.join(repo_root, directory)):
-            seen_evidence.append((70, "%s/ directory" % directory))
-
-    if os.path.exists(os.path.join(repo_root, "conftest.py")):
-        seen_evidence.append((80, "conftest.py"))
+            seen_evidence.append(
+                (_WEAK_DIRECTORY_CONFIDENCE,
+                 "%s/ directory (weak: tests exist, but nothing names pytest)"
+                 % directory,
+                 "weak")
+            )
 
     if not seen_evidence:
         return []
 
-    confidence, label = max(seen_evidence)
-    candidates.append(
+    confidence, label, strength = max(seen_evidence)
+    argv = _base_argv()
+
+    runnable, detail = (True, "not verified")
+    if verify:
+        runnable, detail = probe(argv, cwd=repo_root)
+        if not runnable:
+            confidence = min(confidence, 5)
+
+    return [
         {
             "adapter": NAME,
-            "argv": _base_argv(),
+            "argv": argv,
             "cwd": ".",
             "timeout_seconds": 900,
             "confidence": confidence,
             "evidence": label,
+            "evidence_strength": strength,
+            "runnable": runnable,
+            "runnable_detail": detail,
             "execution_evidence": EXECUTION_EVIDENCE,
         }
-    )
-    return candidates
+    ]
 
 
 def protected_paths(repo_root=None):

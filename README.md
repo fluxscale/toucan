@@ -135,6 +135,11 @@ now.
 Adapter coverage is **pytest** only. Outside it, Toucan says it could not detect an oracle and asks
 you for the invocation, rather than guessing one.
 
+Detection verifies that a candidate invocation can actually start before offering it, and
+distinguishes strong evidence (a config file naming the runner) from weak (a `tests/` directory,
+which shows tests exist but not which runner runs them). A recognised-but-uninstalled runner is
+reported with the reason it cannot start, not proposed and then discovered broken at baseline.
+
 ## Relationship to Gauntlet Loop
 
 Toucan and [Gauntlet Loop](https://github.com/robonuggets/gauntlet-loop) are complementary.
