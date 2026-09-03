@@ -1,6 +1,6 @@
 ---
 name: toucan
-description: Register a verifiable slice — draft a specification from your intent and the repository, ratify what the model invented, capture a baseline, and freeze it before any implementation begins. Use when starting work whose correctness an oracle can establish, or when asked to set up a Toucan slice.
+description: Register a verifiable slice and drive its bounded builder-verifier loop — draft a specification from your intent and the repository, ratify what the model invented, capture a baseline, freeze it, then loop implementer against independent critic until PASS, budget exhaustion, or stall. Use when starting work whose correctness an oracle can establish, or when asked to set up or resume a Toucan slice.
 ---
 
 # Register a slice
@@ -10,7 +10,8 @@ specification that is sufficient, ratified, and frozen — before any implementa
 
 Everything after `/toucan` is the human's intent text. It may be empty.
 
-**You do not implement anything in this skill.** Registration ends at the freeze.
+**You do not implement anything during registration.** Registration ends at the freeze; the
+loop that follows delegates implementation to a separate agent and judgement to another.
 
 ## The one rule that matters
 
@@ -41,6 +42,10 @@ toucan spec check  --slice-id ID   the sufficiency predicate
 toucan baseline    --slice-id ID   runs the oracle, records the red baseline
 toucan criteria    --slice-id ID   the four-slot strictness ladder
 toucan freeze      --slice-id ID
+toucan attempt start  --slice-id ID   refuses on pending verdict, closure, budget, stall
+toucan verdict record --slice-id ID --verdict V --measurements JSON ...
+toucan stall check    --slice-id ID
+toucan slice close    --slice-id ID --outcome passed|exhausted|abandoned
 ```
 
 ## Procedure
@@ -171,7 +176,66 @@ toucan freeze --slice-id <id>
 
 Report the version, the content hash, and the base commit. Registration is complete. State plainly
 that the criterion is now fixed and that changing it requires an amendment, which is versioned and
-recorded in the ledger.
+recorded in the ledger. Then ask one question: **run the loop now, or stop here?** Never start the
+loop unasked.
+
+## The loop
+
+The loop alternates two agents that must never share context, with the runner enforcing every
+transition. You are the orchestrator: you spawn, you record, you never judge and you never build.
+
+Each iteration:
+
+### 1. Start the attempt
+
+```
+toucan attempt start --slice-id <id>
+```
+
+A refusal here is a loop exit, not an obstacle. Read the reason: pending verdict means you skipped
+recording; budget or stall means the slice is done and honesty is the next step (see Exhaustion).
+
+### 2. Spawn the implementer
+
+A separate agent, given exactly: the intent text, the ratified criterion, the oracle invocation,
+the protected paths (state plainly that editing them fails the slice), and `prior_observations`
+from the attempt-start output — the ledger's memory of what earlier attempts eliminated, so it
+does not repeat a dead hypothesis. **Never give it the critic's reasoning, and never give it this
+conversation.** Tell it to implement, run the oracle itself if it wishes, and stop.
+
+### 3. Spawn the critic
+
+Invoke the `toucan-critic` agent with the slice id and repository path only. It reads the frozen
+specification with `toucan spec show`, checks sufficiency with `toucan spec check`, executes the
+oracle, and returns its verdict block. **Never summarise the implementer's work to it. Never pass
+it the implementer's report.** Fresh context is the property that makes it a gate.
+
+### 4. Record the verdict
+
+```
+toucan verdict record --slice-id <id> --verdict <V>   --measurements '<JSON from the critic>'   --observation "<what the oracle established>" --eliminates "<hypothesis, or omit>"
+```
+
+Record what the critic returned, verbatim. The response tells you `budget_exhausted` and
+`stalled` — the runner computed them from the ledger; do not recompute or second-guess.
+
+### 5. Branch
+
+- **PASS** → `toucan slice close --outcome passed`. Report the criterion, the evidence, and the
+  ledger summary.
+- **FAIL, loop continues** → next iteration from step 1.
+- **FAIL with `budget_exhausted` or `stalled`** → Exhaustion, below.
+- **BLOCKED / INVALID-SPEC** → stop and surface it to the human. These consume no budget:
+  BLOCKED is an environment problem; INVALID-SPEC on a frozen slice means the specification
+  changed after freezing, and that is an alarm, not a retry.
+
+### Exhaustion
+
+`toucan slice close --outcome exhausted --reason <budget|stall>`. Then report without softening:
+the criterion was **not met**. Give the attempt count, the measurement series, and each recorded
+observation with what it eliminated — the ledger has earned its keep precisely here. Offer the
+human the three honest doors: abandon, amend (visible, versioned), or register a different slice.
+Never call an exhausted slice "close enough". Never restart the loop on your own authority.
 
 ## The confirmation display
 
@@ -198,4 +262,6 @@ Never show a field without its class. The class is the information.
 - Rewrite, summarise, or tidy the intent text.
 - Fabricate a count, a hash, a target name, or a command's output.
 - Continue past a refusal by taking a different route to the same place.
-- Begin implementing. Registration ends at the freeze.
+- Implement anything yourself — building is the implementer's, judging is the critic's.
+- Let the implementer and critic share context, or relay one's reasoning to the other.
+- Restart an exhausted loop, or soften an exhausted slice into a success.

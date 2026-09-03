@@ -126,14 +126,34 @@ Registration and the critic share **one** sufficiency predicate. Registration ca
 specification the critic would reject — so an `INVALID-SPEC` verdict on a frozen slice means the
 specification changed after freezing, which is worth alarming on.
 
+## The loop
+
+After the freeze, `/toucan` offers to run the bounded builder–verifier loop. Every exit is
+mechanical and every transition is enforced by the runner, not requested in a prompt:
+
+- an attempt cannot start while the previous attempt has no recorded verdict, after the slice is
+  closed, when the budget is spent, or when the slice has **stalled**;
+- budget is consumed by FAIL verdicts only — BLOCKED and INVALID-SPEC are the environment's
+  failures, not the attempt's;
+- **stall detection** reads the measurement series from the hash-chained ledger: a declared
+  metric, direction, window and epsilon (with defaults), so a loop that stops improving stops
+  running — the loop cannot run unbounded even with budget remaining;
+- the implementer and the critic never share context: the implementer gets the intent, the
+  criterion, the protected paths and the ledger's eliminated hypotheses; the critic gets the
+  frozen specification and nothing about the implementer's effort;
+- exhaustion is reported as exhaustion. An unmet criterion is never softened into "close enough".
+
+All loop state — iteration, budget, stall, closure — is derived by replaying the ledger, never
+stored in a mutable field, so the loop's control state is tamper-evident for the same reason its
+history is.
+
 ## What does not ship yet
 
-The loop itself: spawning implementers, iteration accounting beyond `attempt start`, and automatic
-verdict handling. Registration and verification are both complete; orchestrating them is manual for
-now.
+The judge instrument for taste-shaped work (blind pairwise judging against a content-hashed
+reference) is designed and specified, and will be the first work developed *through* the loop.
 
-Adapter coverage is **pytest** only. Outside it, Toucan says it could not detect an oracle and asks
-you for the invocation, rather than guessing one.
+Adapter coverage is **pytest** and stdlib **unittest**. Outside those, Toucan says it could not
+detect an oracle and asks you for the invocation, rather than guessing one.
 
 Detection verifies that a candidate invocation can actually start before offering it, and
 distinguishes strong evidence (a config file naming the runner) from weak (a `tests/` directory,

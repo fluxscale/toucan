@@ -104,7 +104,7 @@ class AmendTest(RepoCase):
         )
         amendment = amended["frozen"]["amendment"]
         self.assertEqual(amendment["justification"], "scope was wrong")
-        self.assertEqual(amended["frozen"]["iteration"], 3)
+        self.assertEqual(amended["frozen"]["at_iteration"], 3)
         changed = [c["field"] for c in amendment["changes"]]
         self.assertIn("criterion", changed)
 

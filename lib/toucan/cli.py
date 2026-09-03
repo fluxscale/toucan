@@ -13,6 +13,7 @@ import os
 import sys
 
 from . import adapters, baseline as baseline_mod, criteria, ledger as ledger_mod
+from . import loop as loop_mod
 from . import signals as signals_mod, spec as spec_mod, store
 from .errors import Refusal, ToucanError
 from .oracle import ExecutionFailure
@@ -273,18 +274,15 @@ def cmd_status(args):
 def cmd_attempt_start(args):
     root = repo_root(args)
     document = store.load_frozen(root, args.slice_id)
-    iteration = document["frozen"].get("iteration", 0) + 1
-    maximum = spec_mod.get(document, "iteration_maximum")
-    if maximum is not None and iteration > maximum:
-        raise Refusal(
-            "slice %r has exhausted its budget of %d iterations"
-            % (args.slice_id, maximum)
-        )
+    path = store.ledger_path(root, args.slice_id)
+    state = loop_mod.replay(path)
+    loop_mod.refuse_if_unstartable(document, state)
+    attempt = state["attempts_started"] + 1
     ledger_mod.append(
-        store.ledger_path(root, args.slice_id),
+        path,
         {
             "event": "attempt_started",
-            "iteration": iteration,
+            "attempt": attempt,
             "version": document["frozen"]["version"],
             "content_hash": document["frozen"]["content_hash"],
         },
@@ -293,11 +291,98 @@ def cmd_attempt_start(args):
         {
             "started": True,
             "slice_id": args.slice_id,
-            "iteration": iteration,
-            "iteration_maximum": maximum,
+            "attempt": attempt,
+            "consumed_iterations": state["consumed"],
+            "iteration_maximum": spec_mod.get(document, "iteration_maximum"),
             "criterion": spec_mod.get(document, "criterion"),
+            "prior_observations": [
+                {
+                    "attempt": v.get("attempt"),
+                    "verdict": v.get("verdict"),
+                    "observation": v.get("observation"),
+                    "eliminates": v.get("eliminates"),
+                }
+                for v in state["verdicts"]
+            ],
         }
     )
+    return 0
+
+
+def cmd_verdict_record(args):
+    root = repo_root(args)
+    store.load_frozen(root, args.slice_id)  # verifies hash; refuses tampering
+    path = store.ledger_path(root, args.slice_id)
+    state = loop_mod.replay(path)
+    if state["closed"]:
+        raise Refusal("slice is closed (%s); no further verdicts" % state["closed"])
+    if state["pending_attempt"] is None:
+        raise Refusal(
+            "no attempt is awaiting a verdict; start one with `toucan attempt "
+            "start` before recording"
+        )
+    if args.verdict not in ("PASS", "FAIL", "BLOCKED", "INVALID-SPEC"):
+        raise Refusal("unknown verdict %r" % args.verdict)
+    measurements = json.loads(args.measurements) if args.measurements else None
+    entry = {
+        "event": "verdict",
+        "attempt": state["pending_attempt"],
+        "verdict": args.verdict,
+        "measurements": measurements,
+        "observation": args.observation,
+        "eliminates": args.eliminates,
+        "discrepancy": args.discrepancy,
+    }
+    record = ledger_mod.append(path, entry)
+    after = loop_mod.replay(path)
+    document = store.load_frozen(root, args.slice_id)
+    stall = loop_mod.stall_report(document, after)
+    maximum = spec_mod.get(document, "iteration_maximum")
+    emit(
+        {
+            "recorded": True,
+            "record": record,
+            "consumed_iterations": after["consumed"],
+            "iteration_maximum": maximum,
+            "budget_exhausted": (
+                maximum is not None and after["consumed"] >= maximum
+            ),
+            "stalled": stall["stalled"],
+            "stall_series": stall["series"],
+        }
+    )
+    return 0
+
+
+def cmd_stall_check(args):
+    root = repo_root(args)
+    document = store.load_frozen(root, args.slice_id)
+    state = loop_mod.replay(store.ledger_path(root, args.slice_id))
+    report = loop_mod.stall_report(document, state)
+    report["slice_id"] = args.slice_id
+    emit(report)
+    return 0 if not report["stalled"] else 2
+
+
+def cmd_slice_close(args):
+    root = repo_root(args)
+    store.load_frozen(root, args.slice_id)
+    path = store.ledger_path(root, args.slice_id)
+    state = loop_mod.replay(path)
+    if state["closed"]:
+        raise Refusal("slice is already closed (%s)" % state["closed"])
+    if args.outcome not in loop_mod.OUTCOMES:
+        raise Refusal("unknown outcome %r" % args.outcome)
+    if args.outcome == "passed" and state["last_verdict"] != "PASS":
+        raise Refusal(
+            "cannot close as passed: the last recorded verdict is %r, not PASS"
+            % state["last_verdict"]
+        )
+    record = ledger_mod.append(
+        path,
+        {"event": "closed", "outcome": args.outcome, "reason": args.reason},
+    )
+    emit({"closed": True, "outcome": args.outcome, "record": record})
     return 0
 
 
@@ -429,6 +514,27 @@ def build_parser():
     attempt = sub.add_parser("attempt", help="attempt lifecycle")
     attempt_sub = attempt.add_subparsers(dest="attempt_command", required=True)
     with_slice(attempt_sub.add_parser("start")).set_defaults(func=cmd_attempt_start)
+
+    verdict = sub.add_parser("verdict", help="record the critic's judgement")
+    verdict_sub = verdict.add_subparsers(dest="verdict_command", required=True)
+    vrec = with_slice(verdict_sub.add_parser("record"))
+    vrec.add_argument("--verdict", required=True)
+    vrec.add_argument("--measurements", default=None, help="JSON object")
+    vrec.add_argument("--observation", default=None)
+    vrec.add_argument("--eliminates", default=None)
+    vrec.add_argument("--discrepancy", default=None)
+    vrec.set_defaults(func=cmd_verdict_record)
+
+    stall = sub.add_parser("stall", help="convergence detection")
+    stall_sub = stall.add_subparsers(dest="stall_command", required=True)
+    with_slice(stall_sub.add_parser("check")).set_defaults(func=cmd_stall_check)
+
+    slc = sub.add_parser("slice", help="slice lifecycle")
+    slc_sub = slc.add_subparsers(dest="slice_command", required=True)
+    close = with_slice(slc_sub.add_parser("close"))
+    close.add_argument("--outcome", required=True)
+    close.add_argument("--reason", default=None)
+    close.set_defaults(func=cmd_slice_close)
 
     amend = with_slice(sub.add_parser("amend", help="supersede a frozen version"))
     amend.add_argument("--set", action="append", metavar="FIELD=JSON")

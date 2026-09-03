@@ -113,12 +113,16 @@ def list_slices(repo_root):
             except NotFound:
                 entry["state"] = "empty"
         else:
+            from . import loop as loop_mod
+
             document = load_frozen(repo_root, slice_id, version)
+            state = loop_mod.replay(ledger_path(repo_root, slice_id))
             entry["criterion"] = spec_mod.get(document, "criterion")
             entry["intent"] = document["intent"]
-            entry["iteration"] = document["frozen"].get("iteration", 0)
+            entry["consumed_iterations"] = state["consumed"]
             entry["iteration_maximum"] = spec_mod.get(document, "iteration_maximum")
-            entry["state"] = document["frozen"].get("state", "live")
+            entry["last_verdict"] = state["last_verdict"]
+            entry["state"] = state["closed"] or "live"
         out.append(entry)
     return out
 
@@ -166,8 +170,6 @@ def freeze(repo_root, slice_id, base_sha):
         "base_sha": base_sha,
         "previous_version": version - 1 if version > 1 else None,
         "previous_hash": previous_hash,
-        "iteration": 0,
-        "state": "live",
     }
     draft["frozen"]["content_hash"] = content_hash(spec_mod.hashable_view(draft))
 
@@ -250,8 +252,7 @@ def amend(repo_root, slice_id, updates, justification, iteration):
         "base_sha": current["frozen"]["base_sha"],
         "previous_version": current["frozen"]["version"],
         "previous_hash": current["frozen"]["content_hash"],
-        "iteration": iteration,
-        "state": "live",
+        "at_iteration": iteration,
         "amendment": {"justification": justification, "changes": changes},
     }
     amended["frozen"]["content_hash"] = content_hash(spec_mod.hashable_view(amended))

@@ -131,7 +131,7 @@ class EndToEndTest(RepoCase):
         self.assertEqual(len(frozen["content_hash"]), 64)
 
         started = self.cli("attempt", "start", "--slice-id", "s1")
-        self.assertEqual(started["iteration"], 1)
+        self.assertEqual(started["attempt"], 1)
 
         status = self.cli("status")
         self.assertTrue(status["has_live_slice"])
