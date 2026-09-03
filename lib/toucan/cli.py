@@ -328,6 +328,25 @@ def cmd_amend(args):
     return 0
 
 
+def cmd_unittest_run(args):
+    """The oracle argv for unittest slices. Not a query -- it runs tests."""
+    from . import unittest_run
+
+    status, report = unittest_run.run(
+        args.start_dir,
+        pattern=args.pattern,
+        top_level=args.top_level,
+        report_path=args.report,
+        stream=sys.stderr,
+    )
+    print(
+        "%d run, %d failed, %d skipped in %.2fs"
+        % (report["collected"], report["failed"], report["skipped"],
+           report["duration_seconds"])
+    )
+    return status
+
+
 def cmd_ledger_append(args):
     root = repo_root(args)
     entry = json.loads(args.entry)
@@ -416,6 +435,16 @@ def build_parser():
     amend.add_argument("--justification", required=True)
     amend.add_argument("--at-iteration", type=int, required=True)
     amend.set_defaults(func=cmd_amend)
+
+    urun = sub.add_parser(
+        "unittest-run",
+        help="run stdlib unittest discovery with a machine-readable report",
+    )
+    urun.add_argument("-s", "--start-dir", default=".")
+    urun.add_argument("-p", "--pattern", default="test*.py")
+    urun.add_argument("--top-level", default=None)
+    urun.add_argument("--report", default=None)
+    urun.set_defaults(func=cmd_unittest_run)
 
     led = sub.add_parser("ledger", help="durable failure memory")
     led_sub = led.add_subparsers(dest="ledger_command", required=True)

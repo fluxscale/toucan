@@ -51,6 +51,14 @@ def run(argv, cwd, timeout_seconds, extra_args=()):
         raise ExecutionFailure("oracle.argv %s" % objection)
 
     command = list(argv) + list(extra_args)
+    if command[0] == "toucan":
+        import os as _os
+        import sys as _sys
+
+        _entry = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.dirname(
+                _os.path.abspath(__file__)))), "bin", "toucan")
+        command[0:1] = [_sys.executable, _entry]
     started = time.monotonic()
     try:
         completed = subprocess.run(

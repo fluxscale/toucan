@@ -10,18 +10,21 @@ from toucan import adapters  # noqa: E402
 from toucan.oracle import SHELL_CONSTRUCTS, argv_objection  # noqa: E402
 
 
+def _by_adapter(candidates, name):
+    matches = [c for c in candidates if c["adapter"] == name]
+    assert len(matches) == 1, "expected exactly one %s candidate" % name
+    return matches[0]
+
+
 class DetectionTest(RepoCase):
-    def test_detects_a_single_unambiguous_runner(self):
+    def test_detects_exactly_one_pytest_candidate(self):
         candidates = adapters.detect_all(self.repo)
-        self.assertEqual(len(candidates), 1)
-        self.assertEqual(candidates[0]["adapter"], "pytest")
-        self.assertTrue(candidates[0]["evidence"])
+        candidate = _by_adapter(candidates, "pytest")
+        self.assertTrue(candidate["evidence"])
 
     def test_detection_names_its_evidence(self):
-        candidate = adapters.detect_all(self.repo)[0]
-        self.assertIn(candidate["evidence"], ("pytest.ini", "tests/ directory",
-                                              "conftest.py", "tox.ini",
-                                              "setup.cfg"))
+        candidate = _by_adapter(adapters.detect_all(self.repo), "pytest")
+        self.assertIn("pytest.ini", candidate["evidence"])
 
     def test_reports_nothing_when_no_runner_is_present(self):
         empty = os.path.join(self.repo, "empty")
@@ -89,8 +92,9 @@ class AmbiguousDetectionTest(RepoCase):
 
     def test_competing_runners_both_surface(self):
         candidates = adapters.detect_all(self.repo)
-        self.assertEqual(len(candidates), 2)
-        self.assertEqual({c["adapter"] for c in candidates}, {"pytest", "rival"})
+        names = {c["adapter"] for c in candidates}
+        self.assertIn("pytest", names)
+        self.assertIn("rival", names)
 
     def test_candidates_are_ordered_by_confidence(self):
         candidates = adapters.detect_all(self.repo)
@@ -154,14 +158,17 @@ class RunnabilityTest(RepoCase):
 class EvidenceStrengthTest(RepoCase):
     """A test directory is weak evidence; a config naming pytest is strong."""
 
+    def _pytest(self):
+        return _by_adapter(adapters.detect_all(self.repo), "pytest")
+
     def test_pytest_ini_is_strong_evidence(self):
-        candidate = adapters.detect_all(self.repo)[0]
+        candidate = self._pytest()
         self.assertEqual(candidate["evidence_strength"], "strong")
         self.assertIn("pytest.ini", candidate["evidence"])
 
     def test_bare_test_directory_is_weak_evidence(self):
         os.remove(os.path.join(self.repo, "pytest.ini"))
-        candidate = adapters.detect_all(self.repo)[0]
+        candidate = self._pytest()
         self.assertEqual(candidate["evidence_strength"], "weak")
         self.assertIn("weak", candidate["evidence"])
 
@@ -169,19 +176,16 @@ class EvidenceStrengthTest(RepoCase):
         os.remove(os.path.join(self.repo, "pytest.ini"))
         with open(os.path.join(self.repo, "tox.ini"), "w") as handle:
             handle.write("[testenv]\ncommands = nosetests\n")
-        candidate = adapters.detect_all(self.repo)[0]
-        self.assertEqual(candidate["evidence_strength"], "weak")
+        self.assertEqual(self._pytest()["evidence_strength"], "weak")
 
     def test_config_file_naming_pytest_is_strong_evidence(self):
         os.remove(os.path.join(self.repo, "pytest.ini"))
         with open(os.path.join(self.repo, "tox.ini"), "w") as handle:
             handle.write("[pytest]\naddopts = -q\n")
-        candidate = adapters.detect_all(self.repo)[0]
-        self.assertEqual(candidate["evidence_strength"], "strong")
+        self.assertEqual(self._pytest()["evidence_strength"], "strong")
 
     def test_pyproject_without_a_pytest_section_is_not_evidence(self):
         os.remove(os.path.join(self.repo, "pytest.ini"))
         with open(os.path.join(self.repo, "pyproject.toml"), "w") as handle:
             handle.write("[project]\nname = 'demo'\n")
-        candidate = adapters.detect_all(self.repo)[0]
-        self.assertEqual(candidate["evidence_strength"], "weak")
+        self.assertEqual(self._pytest()["evidence_strength"], "weak")

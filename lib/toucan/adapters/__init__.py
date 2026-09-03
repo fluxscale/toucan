@@ -10,10 +10,11 @@ approximated. Detection that guesses would produce a specification that looks
 identical to a sound one.
 """
 
-from . import pytest_adapter
+from . import pytest_adapter, unittest_adapter
 
 ADAPTERS = {
     pytest_adapter.NAME: pytest_adapter,
+    unittest_adapter.NAME: unittest_adapter,
 }
 
 
