@@ -219,3 +219,11 @@ class ClosureTest(LoopCase):
         verify = self.cli("ledger", "verify", "--slice-id", sid)
         self.assertTrue(verify["intact"])
         self.assertEqual(verify["entries"], 6)  # freeze + 2x(start+verdict) + close
+
+
+class DoctorVersionTest(LoopCase):
+    def test_doctor_reports_the_runner_version(self):
+        from toucan import __version__
+
+        report = self.cli("doctor")
+        self.assertEqual(report["toucan_version"], __version__)

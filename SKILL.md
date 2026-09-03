@@ -56,6 +56,13 @@ Run `toucan doctor`. If it reports the interpreter unsupported, say so and stop.
 in a degraded mode — a registration that skips the runner produces a document that looks identical
 to a sound one and guarantees nothing.
 
+Check `toucan_version` and `which toucan`. If the version is older than the commands this skill
+documents (missing `toucan_version` means pre-0.3), the runner on PATH is stale — usually an old
+plugin cache shadowing an update. Say so, name the path, and stop: tell the human to update the
+plugin and run `/reload-plugins` (or restart the session). **Never emulate a missing runner
+command with `ledger append` or any other route** — an emulated command produces records the real
+runner may not read, and the guarantee it stood for silently lapses.
+
 Run `toucan status`. If a live slice exists, do not start a new registration. Report its slice id,
 criterion, and iteration against budget, and ask the human to choose:
 

@@ -39,9 +39,12 @@ def repo_root(args):
 
 
 def cmd_doctor(args):
+    from . import __version__
+
     ok = sys.version_info >= MIN_PYTHON
     emit(
         {
+            "toucan_version": __version__,
             "python_version": ".".join(str(p) for p in sys.version_info[:3]),
             "python_supported": ok,
             "minimum_python": ".".join(str(p) for p in MIN_PYTHON),
