@@ -85,6 +85,32 @@ def evaluate(spec):
         if name in fields and not isinstance(fields[name]["value"], list):
             ambiguous.append("%s must be a list, even when empty" % name)
 
+    oracle_value = fields.get("oracle", {}).get("value")         if "oracle" in fields else None
+    if isinstance(oracle_value, dict) and oracle_value.get("adapter") == "judge":
+        reference = fields.get("reference", {}).get("value")             if "reference" in fields else None
+        if not isinstance(reference, dict):
+            missing.append("reference")
+        elif not reference.get("content_hash") or not reference.get("name"):
+            ambiguous.append(
+                "reference must carry a name and the content hash recorded at "
+                "registration"
+            )
+        rubric_value = fields.get("rubric", {}).get("value")             if "rubric" in fields else None
+        if not isinstance(rubric_value, dict):
+            missing.append("rubric")
+        else:
+            if not rubric_value.get("dimensions"):
+                ambiguous.append("rubric must name at least one dimension")
+            runs = rubric_value.get("runs_required")
+            if not isinstance(runs, int) or runs < 3:
+                ambiguous.append(
+                    "rubric.runs_required must be at least 3: a "
+                    "nondeterministic instrument carries a stricter standard"
+                )
+            dims = rubric_value.get("dims_required")
+            if not isinstance(dims, int) or dims < 1:
+                ambiguous.append("rubric.dims_required " + _POSITIVE_INT)
+
     if not spec.get("slice_id"):
         missing.append("slice_id")
 

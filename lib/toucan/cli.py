@@ -14,6 +14,7 @@ import sys
 
 from . import adapters, baseline as baseline_mod, criteria, ledger as ledger_mod
 from . import loop as loop_mod
+from . import judge as judge_mod, reference as reference_mod, rubric as rubric_mod
 from . import signals as signals_mod, spec as spec_mod, store
 from .errors import Refusal, ToucanError
 from .oracle import ExecutionFailure
@@ -435,6 +436,83 @@ def cmd_unittest_run(args):
     return status
 
 
+def cmd_reference_register(args):
+    root = repo_root(args)
+    record = reference_mod.register(root, args.slice_id, args.location, args.name)
+    document = store.load_draft(root, args.slice_id)
+    spec_mod.set_field(document, "reference", record, spec_mod.YOURS,
+                       args.evidence or "supplied by human")
+    store.save_draft(root, document)
+    emit({"registered": True, "reference": record})
+    return 0
+
+
+def cmd_rubric_ladder(args):
+    dimensions = json.loads(args.dimensions)
+    if not isinstance(dimensions, list) or not dimensions:
+        raise Refusal("--dimensions must be a non-empty JSON array of names")
+    emit({"slots": list(rubric_mod.SLOTS),
+          "candidates": rubric_mod.ladder(dimensions)})
+    return 0
+
+
+def cmd_judge_prepare(args):
+    root = repo_root(args)
+    manifest = judge_mod.prepare(root, args.slice_id, args.candidate)
+    emit({"prepared": True, "manifest": manifest})
+    return 0
+
+
+def cmd_judge_ingest(args):
+    root = repo_root(args)
+    with open(args.file, "r", encoding="utf-8") as handle:
+        results = json.load(handle)
+    measurements = judge_mod.ingest(root, args.slice_id, results)
+    emit({"ingested": True, "measurements": measurements})
+    return 0
+
+
+def cmd_judge_run(args):
+    root = repo_root(args)
+    measurements = judge_mod.run_executed(root, args.slice_id, args.candidate)
+    emit({"executed": True, "measurements": measurements})
+    return 0
+
+
+def cmd_judge_check(args):
+    root = repo_root(args)
+    measurements = judge_mod.latest_measurements(root, args.slice_id)
+    emit(measurements)
+    return 0 if measurements.get("criterion_met") else 2
+
+
+def cmd_judge_baseline(args):
+    root = repo_root(args)
+    document = store.load_draft(root, args.slice_id)
+    reference = spec_mod.get(document, "reference")
+    if not isinstance(reference, dict):
+        raise Refusal("register the reference before the baseline")
+    from . import artifacts as artifacts_mod
+
+    candidate = artifacts_mod.store_artifact(root, args.slice_id, args.candidate)
+    document["baseline"] = {
+        "captured_at": spec_mod.utcnow(),
+        "base_sha": signals_mod.head_sha(root),
+        "oracle": {"adapter": "judge"},
+        "candidate_hash": candidate["sha256"],
+        "reference_hash": reference["content_hash"],
+        "measurements": {
+            "source": "judge-registration",
+            "note": "baseline artifact stored and hashed; the first judging "
+            "occurs at verification, so the criterion is unmet by "
+            "construction at baseline",
+        },
+    }
+    store.save_draft(root, document)
+    emit({"captured": True, "baseline": document["baseline"]})
+    return 0
+
+
 def cmd_ledger_append(args):
     root = repo_root(args)
     entry = json.loads(args.entry)
@@ -554,6 +632,36 @@ def build_parser():
     urun.add_argument("--top-level", default=None)
     urun.add_argument("--report", default=None)
     urun.set_defaults(func=cmd_unittest_run)
+
+    ref = sub.add_parser("reference", help="the judge slice's bar")
+    ref_sub = ref.add_subparsers(dest="reference_command", required=True)
+    rreg = with_slice(ref_sub.add_parser("register"))
+    rreg.add_argument("--location", required=True, help="path or http(s) URL")
+    rreg.add_argument("--name", required=True)
+    rreg.add_argument("--evidence", default=None)
+    rreg.set_defaults(func=cmd_reference_register)
+
+    rub = sub.add_parser("rubric", help="rubric severity ladder")
+    rub_sub = rub.add_subparsers(dest="rubric_command", required=True)
+    rlad = rub_sub.add_parser("ladder")
+    rlad.add_argument("--dimensions", required=True, help="JSON array")
+    rlad.set_defaults(func=cmd_rubric_ladder)
+
+    jdg = sub.add_parser("judge", help="the pairwise judge instrument")
+    jdg_sub = jdg.add_subparsers(dest="judge_command", required=True)
+    jprep = with_slice(jdg_sub.add_parser("prepare"))
+    jprep.add_argument("--candidate", required=True)
+    jprep.set_defaults(func=cmd_judge_prepare)
+    jing = with_slice(jdg_sub.add_parser("ingest"))
+    jing.add_argument("--file", required=True, help="blind results JSON")
+    jing.set_defaults(func=cmd_judge_ingest)
+    jrun = with_slice(jdg_sub.add_parser("run"))
+    jrun.add_argument("--candidate", required=True)
+    jrun.set_defaults(func=cmd_judge_run)
+    with_slice(jdg_sub.add_parser("check")).set_defaults(func=cmd_judge_check)
+    jbase = with_slice(jdg_sub.add_parser("baseline"))
+    jbase.add_argument("--candidate", required=True)
+    jbase.set_defaults(func=cmd_judge_baseline)
 
     led = sub.add_parser("ledger", help="durable failure memory")
     led_sub = led.add_subparsers(dest="ledger_command", required=True)

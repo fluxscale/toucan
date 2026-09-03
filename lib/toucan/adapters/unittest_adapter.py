@@ -26,9 +26,10 @@ PROTECTED_PATHS = [
 ]
 
 EXECUTION_EVIDENCE = (
-    "A JSON report written by the toucan unittest runner listing every "
-    "collected test id, with the collected count matching the expected "
-    "targets and no unexpected skips or load errors."
+    "A JSON report written by the toucan unittest runner carrying collected, "
+    "executed, passed, failed and skipped counts plus the identities of "
+    "failing, skipped and load-error targets; positive execution is "
+    "established from the counts and the empty load-error list."
 )
 
 _IMPORT = re.compile(r"^\s*(?:import unittest\b|from unittest\b)", re.MULTILINE)

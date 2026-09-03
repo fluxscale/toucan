@@ -147,13 +147,33 @@ All loop state — iteration, budget, stall, closure — is derived by replaying
 stored in a mutable field, so the loop's control state is tamper-evident for the same reason its
 history is.
 
+## Judge slices
+
+Taste-shaped work — writing, design, developer experience — registers as a **judge slice**: same
+door, same freeze, same bounded loop, with the judge as an *instrument*, never an oracle. The
+protocol is enforced by the runner:
+
+- the **bar is mandatory and hashed**: a named, fetchable reference is fetched at registration
+  and content-hashed, so it provably cannot move mid-slice — no bar, no judge slice;
+- judging is **blind pairwise**, labels stripped, order randomised per run and recorded; the
+  rubric is the *question*, never a score scale, and it's ratified on a severity ladder
+  (`majority` → `strong` → `unanimous` → `exacting`) whose strict end cannot be suppressed;
+- **≥3 runs, any run below the bar fails the criterion**, every individual outcome recorded;
+- two measurement sources that never look alike: `judge-executed` (the runner invoked the judge)
+  and `judge-ingested` (results supplied by a harness — the runner verified their form and
+  manifest correspondence, not their production, and says so);
+- the criterion compares against the fixed reference; the stall series compares against the
+  prior attempt. **Momentum never decides PASS.**
+
+This capability was the loop's first customer: its own implementation ran as a registered slice
+(`judge-instrument`, red baseline of 1 failing load target, frozen, one visible amendment, PASS
+from an independent critic at iteration 1 of 3, ledger intact).
+
 ## What does not ship yet
 
-The judge instrument for taste-shaped work (blind pairwise judging against a content-hashed
-reference) is designed and specified, and will be the first work developed *through* the loop.
-
-Adapter coverage is **pytest** and stdlib **unittest**. Outside those, Toucan says it could not
-detect an oracle and asks you for the invocation, rather than guessing one.
+Adapter coverage is **pytest**, stdlib **unittest**, and the **judge** instrument. Outside those,
+Toucan says it could not detect an oracle and asks you for the invocation, rather than guessing
+one.
 
 Detection verifies that a candidate invocation can actually start before offering it, and
 distinguishes strong evidence (a config file naming the runner) from weak (a `tests/` directory,

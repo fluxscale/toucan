@@ -244,6 +244,33 @@ observation with what it eliminated — the ledger has earned its keep precisely
 human the three honest doors: abandon, amend (visible, versioned), or register a different slice.
 Never call an exhausted slice "close enough". Never restart the loop on your own authority.
 
+## Judge slices
+
+Work whose quality a runner cannot execute but a constrained judge can measure — writing, design,
+developer experience — registers as a **judge slice**. Same door, same freeze, same loop; three
+differences, all enforced by the runner:
+
+- **The bar is mandatory.** Ask for a reference that is *named* (a specific thing, not a
+  category), *fetchable*, and *comparable*. Register it with
+  `toucan reference register --slice-id <id> --location <path-or-url> --name "<name>"` — it is
+  fetched now and content-hashed, so it provably cannot move mid-slice. No bar, no judge slice;
+  refuse with the same finality as a missing runnable oracle. Never proceed on a described-but-
+  unfetchable bar.
+- **The rubric is ratified on a severity ladder.** Elicit the dimensions from the human, then run
+  `toucan rubric ladder --dimensions '<JSON>'` and present all four slots — `majority`, `strong`,
+  `unanimous`, `exacting` — in that order with what each gives up. The rubric field is `inferred`
+  until ratified, and freeze refuses while it is.
+- **The oracle is the judge instrument**: adapter `judge`, argv
+  `["toucan","judge","run","--slice-id","<id>"]`, baseline via
+  `toucan judge baseline --candidate <path>`. At verification the critic uses
+  `toucan judge prepare` (blind pairwise packets, order randomised and recorded) and either the
+  configured executed mode (`judge-executed`) or harness judging recorded through
+  `toucan judge ingest` (`judge-ingested`). Report which source produced the measurements —
+  never let the two look alike. The criterion is applied by `toucan judge check`, mechanically.
+
+The judge compares the candidate against the **fixed reference** for the verdict; the stall
+series compares against the prior attempt. Momentum never decides PASS.
+
 ## The confirmation display
 
 Render the draft grouped by provenance, invented values last and marked. Something like:
